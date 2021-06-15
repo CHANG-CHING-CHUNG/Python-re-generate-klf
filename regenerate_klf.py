@@ -2,6 +2,7 @@ import os
 from os import walk
 from db_class import db
 import re
+import json
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -32,12 +33,15 @@ class RegenerateKlf:
 
   def get_all_filenames(self, directory_path, klf_filename):
     filenames_list = []
+    result_filenames = []
     for (dirpath, dirnames, filenames) in walk(directory_path):
-        regexStr = f"^.*{klf_filename}$"
-        match = re.findall(regexStr, filenames[0])
-        if match:
-          filenames_list.extend(filenames)
-        break
+      result_filenames = filenames
+    for filename in result_filenames:
+      regexStr = f"^.*{klf_filename}$"
+      match = re.findall(regexStr, filename)
+      if match:
+        filenames_list.append(filename)
+      
     return filenames_list
 
   def get_user_confirmed_img_data(self,start_id, end_id):
@@ -104,6 +108,7 @@ class RegenerateKlf:
             for img_data in img_data_list:
               img_path = img_data[0].replace(".jpeg",".jpg;")
               c_type_user = img_data[1]
+
               if img_path in self.__lines[n]:
                 if "DefectRecordSpec" in self.__lines[n+1]:
                   rough_bin_number_index = self.__lines[n+1].index("ROUGHBINNUMBER")
@@ -119,21 +124,23 @@ class RegenerateKlf:
     self.rewrite_file(self.__lines,klf_file_name)
 
   def new_re_generate_klf(self, lot_id, upload_time):
-    wafer_id_list = self.get_wafer_id(lot_id, upload_time)
-    wafer_id = wafer_id_list[0][0]
-
-    subfolder_name = self.get_subfolder_name(lot_id, wafer_id,upload_time)[0][0]
-    klf_file_name = self.get_klf_filename(lot_id,wafer_id)[0][0]
-    all_img_data = self.new_get_user_confirmed_img_data(lot_id, wafer_id, upload_time)
-    directory_path = self.__input_klf_backup_path + subfolder_name + "/"
-    filename_list = self.get_all_filenames(directory_path,klf_file_name)
-
-    for filename in filename_list:
-      self.re_generate_klf(subfolder_name,filename,all_img_data)
-
-    return
+    try:
+      wafer_id_list = self.get_wafer_id(lot_id, upload_time)
+      for wafer_id in wafer_id_list:
+        subfolder_name_list = self.get_subfolder_name(lot_id, wafer_id,upload_time)
+        for subfolder_name in subfolder_name_list:
+          subfolder_name = subfolder_name[0]
+          klf_file_name = self.get_klf_filename(lot_id,wafer_id)[0][0]
+          all_img_data = self.new_get_user_confirmed_img_data(lot_id, wafer_id, upload_time)
+          directory_path = self.__input_klf_backup_path + subfolder_name + "/"
+          filename_list = self.get_all_filenames(directory_path,klf_file_name)
+          for filename in filename_list:
+            self.re_generate_klf(subfolder_name,filename,all_img_data)
+      return json.dumps({'action':'rewrite_klf', 'status':'success'})
+    except:
+      return json.dumps({'action':'rewrite_klf', 'status':'failed'})
 
 lot_id = 'J0H989-CP'
 upload_time = '2020-08-04 19:03:19+08'
 re_generate_klf = RegenerateKlf()
-re_generate_klf.new_re_generate_klf(lot_id,upload_time)
+print(re_generate_klf.new_re_generate_klf(lot_id,upload_time))
