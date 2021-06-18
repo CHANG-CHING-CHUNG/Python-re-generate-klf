@@ -17,9 +17,9 @@ class Database:
     self.cur = self.conn.cursor()
 
   def execute_query(self, query,var):
-    self.cur.execute(query,var)
+    result = self.cur.execute(query,var)
     self.conn.commit()
-
+    return result
   def close(self):
     self.cur.close()
     self.conn.close()
