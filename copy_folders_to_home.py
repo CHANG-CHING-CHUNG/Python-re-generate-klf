@@ -1,7 +1,7 @@
 import os
 from subprocess import call
 
-dir_path = "/home/blpha/data/"
+dir_path = "/home/alpha/data/"
 
 call("sudo chmod 777 /home/", shell=True)
 
