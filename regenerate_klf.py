@@ -17,8 +17,8 @@ class RegenerateKlf:
     return [klf_file_name_arr[0],klf_file_name_arr[1]]
 
   def rewrite_file(self,lines,klf_file_name):
-    filepath = f'{ self.__ai_to_oqa_path }{ klf_file_name.split("$$")[2] }'
     try:
+      filepath = f'{ self.__ai_to_oqa_path }{ klf_file_name.split("$$")[2] }'
       if os.path.isfile(filepath):
         os.remove(filepath)
       file_write =  open(filepath,"a")
@@ -27,7 +27,8 @@ class RegenerateKlf:
         file_write.write("\n")
 
       file_write.close()
-      lines.clear()
+      for n in range(len(lines)):
+        lines[n] = lines[n].split(" ")
     except:
       print("有地方出錯了，請檢查")
 
@@ -69,7 +70,7 @@ class RegenerateKlf:
                       and c_type_user is not null 
                       and upload_time = %s 
                       group by wafer_id;"""
-    query_var = (lot_id,upload_time)
+    query_var = [lot_id,upload_time]
     db.execute_query(select_query, query_var)
     wafer_id_list = db.fetchall()
     return  wafer_id_list
@@ -100,28 +101,50 @@ class RegenerateKlf:
 
   def re_generate_klf(self,subfolder_name,klf_file_name,img_data_list):
     with open(f"{self.__input_klf_backup_path}{subfolder_name}/{klf_file_name}") as file_in:
-        for line in file_in:
-            self.__lines.append(line.rstrip().split(" "))  
+        if len(self.__lines) == 0:
+          for line in file_in:
+              self.__lines.append(line.rstrip().split(" "))
         rough_bin_number_index = None
+        for n in range(len(self.__lines)):
+          if "DefectRecordSpec" in self.__lines[n]:
+            rough_bin_number_index = self.__lines[n].index("ROUGHBINNUMBER")
         for n in range(len(self.__lines)):
           if "TiffFileName" in self.__lines[n]:
             for img_data in img_data_list:
-              img_path = img_data[0].replace(".jpeg",".jpg;")
+              img_path = img_data[0].split(".")[0]
               c_type_user = img_data[1]
+              for_comparing = self.__lines[n][1].split(".")[0]
 
-              if img_path in self.__lines[n]:
-                if "DefectRecordSpec" in self.__lines[n+1]:
-                  rough_bin_number_index = self.__lines[n+1].index("ROUGHBINNUMBER")
+              if img_path == for_comparing:
                 if "DefectList" in self.__lines[n+1]:
                   self.__lines[n+2][rough_bin_number_index]=c_type_user
+                  
                 if "DefectList" in self.__lines[n+2]:
                   self.__lines[n+3][rough_bin_number_index]=c_type_user
+                
                 if "DefectList" in self.__lines[n+3]:
                   self.__lines[n+4][rough_bin_number_index]=c_type_user
-          if "SummarySpec" in self.__lines[n]:
-            self.__lines[n][-1] = self.__lines[n][-1] + " "
+          if "SummarySpec" in self.__lines[n] and isinstance(self.__lines[n],str) is not True:
+            last_idx = len(self.__lines[n]) - 1
+            if self.__lines[n][last_idx] == '':
+              self.__lines[n].pop()
+            if self.__lines[n][-1][-1] != " ":
+              self.__lines[n][-1] = self.__lines[n][-1] + " "
           self.__lines[n] = " ".join(self.__lines[n])
     self.rewrite_file(self.__lines,klf_file_name)
+
+  def check_all_img_data_confirmed(self,lot_id, layer, upload_time):
+    select_query = """select lot_id, count(c_type_user) as user_done_count, count(c_type_ai2) as all_ai_count  
+                        from classification_c_img_data 
+                        where
+                        lot_id = %s and 
+                        c_line_type = %s and 
+                        upload_time = %s 
+                        group by lot_id;"""
+    query_var = (lot_id,layer, upload_time)
+    db.execute_query(select_query, query_var)
+    img_data = db.fetchone()
+    return img_data
 
   def new_re_generate_klf(self, lot_id, upload_time):
     try:
@@ -130,15 +153,19 @@ class RegenerateKlf:
         subfolder_name_list = self.get_subfolder_name(lot_id, wafer_id,upload_time)
         for subfolder_name in subfolder_name_list:
           subfolder_name = subfolder_name[0]
-          klf_file_name = self.get_klf_filename(lot_id,wafer_id)[0][0]
-          all_img_data = self.new_get_user_confirmed_img_data(lot_id, wafer_id, upload_time)
-          directory_path = self.__input_klf_backup_path + subfolder_name + "/"
-          filename_list = self.get_all_filenames(directory_path,klf_file_name)
-          for filename in filename_list:
-            self.re_generate_klf(subfolder_name,filename,all_img_data)
-      return json.dumps({'action':'rewrite_klf', 'status':'success'})
+          if len(self.get_klf_filename(lot_id,wafer_id)) != 0:
+            klf_file_name = self.get_klf_filename(lot_id,wafer_id)[0][0]
+            all_img_data = self.new_get_user_confirmed_img_data(lot_id, wafer_id, upload_time)
+            directory_path = self.__input_klf_backup_path + subfolder_name + "/"
+            filename_list = self.get_all_filenames(directory_path,klf_file_name)
+
+            for filename in filename_list:
+              self.re_generate_klf(subfolder_name,filename,all_img_data)
+      self.__lines.clear()
+      return {'action':'rewrite_klf', 'status':'success'}
     except:
-      return json.dumps({'action':'rewrite_klf', 'status':'failed'})
+      return {'action':'rewrite_klf', 'status':'failed'}
+
 
 lot_id = 'J0H989-CP'
 upload_time = '2020-08-04 19:03:19+08'
